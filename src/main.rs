@@ -1,26 +1,49 @@
-use clap::{App, Arg};
-use std::process::{Command, Stdio};
+use clap::{App, AppSettings, Arg};
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
+};
+
+use path_slash::PathBufExt;
 
 fn main() {
-    let matches = App::new("cargo pkgconfig")
+    let matches = App::new("cargo")
+        .bin_name("cargo")
+        .setting(AppSettings::TrailingVarArg)
+        .setting(AppSettings::SubcommandRequired)
         .version(env!("CARGO_PKG_VERSION"))
         .author("Justin Moore <jusmoore@microsoft.com>")
         .about("Extract crate metadata with an interface similar to pkg-config")
-        .args(&[
-            Arg::new("name")
-                .required(true)
-                .takes_value(true)
-                .help("Name of the library (usually the same as the crate name)"),
-            Arg::new("libs")
-                .help("output all linker flags")
-                .long("libs")
-                .required(false),
-            Arg::new("cargocmd").multiple_values(true),
-        ])
+        .subcommand(
+            clap::app_from_crate!().name("pkgconfig").args(&[
+                Arg::new("libname")
+                    .help("Name of the library (usually the same as the crate name)")
+                    .takes_value(true)
+                    .required(true),
+                Arg::new("libs")
+                    .help("output all linker flags")
+                    .long("libs")
+                    .required(false),
+                Arg::new("msvc")
+                    .help("emit MSVC-style flags")
+                    .long("msvc")
+                    .required(false),
+                Arg::new("cargocmd")
+                    .takes_value(true)
+                    .multiple_values(true)
+                    .last(true),
+            ]),
+        )
         .get_matches();
 
-    let name = matches.value_of("name").unwrap();
+    let matches = match matches.subcommand() {
+        Some(("pkgconfig", matches)) => matches,
+        _ => unreachable!(),
+    };
+
+    let name = matches.value_of("libname").unwrap();
     let dump_libs = matches.is_present("libs");
+    let msvc = matches.is_present("msvc");
 
     let cargo_args = matches
         .values_of("cargocmd")
@@ -28,9 +51,12 @@ fn main() {
         .collect::<Vec<_>>();
 
     let cargo_args = ["build", "--message-format=json-render-diagnostics"]
-        .iter()
-        .chain(cargo_args.iter())
+        .into_iter()
+        .chain(cargo_args.into_iter())
         .collect::<Vec<_>>();
+
+    // Print out the cargo command line.
+    // eprintln!("cargo {}", cargo_args.join(" "));
 
     // Invoke cargo and capture metadata.
     let mut command = Command::new("cargo")
@@ -47,7 +73,13 @@ fn main() {
 
                 if target.name == name {
                     // Found the artifact we want.
-                    if target.kind.iter().any(|s| s == "lib") && dump_libs {
+                    // Check if it's either a lib or staticlib artifact.
+                    if target
+                        .kind
+                        .iter()
+                        .any(|s| ["lib", "staticlib"].iter().any(|t| t == s))
+                        && dump_libs
+                    {
                         // Determine path and dump library filename.
                         let filenames = &artifact.filenames;
 
@@ -69,7 +101,20 @@ fn main() {
 
                         // Determine the path to the artifact.
                         let filepath = filename.parent().unwrap();
-                        println!("-L{filepath} -l{name}");
+                        let filename = filename.file_name().unwrap();
+
+                        // HACK: Solely use forward slashes to ensure compatibility with Linux-based tooling.
+                        let filepath = PathBuf::from(filepath).to_slash().unwrap();
+
+                        if msvc {
+                            // These additional libraries are typically required by Rust.
+                            // FIXME: Figure out when, and why?
+                            const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
+
+                            println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
+                        } else {
+                            println!("-L{filepath} -l{name}");
+                        }
                     }
                 }
             }
@@ -77,6 +122,8 @@ fn main() {
             _ => {}
         }
     }
+
+    // TODO: Print an error if we didn't find the library the user specified on the command line.
 
     let output = command.wait().unwrap();
 
