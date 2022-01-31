@@ -65,65 +65,78 @@ fn main() {
         .spawn()
         .unwrap();
 
+    let mut artifacts = Vec::new();
+
     let reader = std::io::BufReader::new(command.stdout.take().unwrap());
     for message in cargo_metadata::Message::parse_stream(reader) {
         match message.unwrap() {
-            cargo_metadata::Message::CompilerArtifact(artifact) => {
-                let target = &artifact.target;
-
-                if target.name == name {
-                    // Found the artifact we want.
-                    // Check if it's either a lib or staticlib artifact.
-                    if target
-                        .kind
-                        .iter()
-                        .any(|s| ["lib", "staticlib"].iter().any(|t| t == s))
-                        && dump_libs
-                    {
-                        // Determine path and dump library filename.
-                        let filenames = &artifact.filenames;
-
-                        // Find the first filename that matches one of *.lib, *.a, *.rlib.
-                        // Whew, iterators are pretty awesome.
-                        let filename = filenames.iter().find(|f| {
-                            ["lib", "a", "rlib"]
-                                .iter()
-                                .any(|e| f.extension() == Some(e))
-                        });
-
-                        let filename = match filename {
-                            Some(f) => f,
-                            None => {
-                                eprintln!("Found artifact \"{name}\", but did not find library artifact from {filenames:?}!");
-                                continue;
-                            }
-                        };
-
-                        // Determine the path to the artifact.
-                        let filepath = filename.parent().unwrap();
-                        let filename = filename.file_name().unwrap();
-
-                        // HACK: Solely use forward slashes to ensure compatibility with Linux-based tooling.
-                        let filepath = PathBuf::from(filepath).to_slash().unwrap();
-
-                        if msvc {
-                            // These additional libraries are typically required by Rust.
-                            // FIXME: Figure out when, and why?
-                            const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
-
-                            println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
-                        } else {
-                            println!("-L{filepath} -l{name}");
-                        }
-                    }
-                }
-            }
-            cargo_metadata::Message::BuildFinished(_) => {}
+            cargo_metadata::Message::CompilerArtifact(artifact) => artifacts.push(artifact),
             _ => {}
         }
     }
 
-    // TODO: Print an error if we didn't find the library the user specified on the command line.
+    if let Some(artifact) = artifacts.iter().find(|a| a.target.name == name) {
+        let target = &artifact.target;
+
+        // Found the artifact we want.
+        // Check if it's either a lib or staticlib artifact.
+        if target
+            .kind
+            .iter()
+            .any(|s| ["lib", "staticlib"].iter().any(|t| t == s))
+            && dump_libs
+        {
+            // Determine path and dump library filename.
+            let filenames = &artifact.filenames;
+
+            // Find the first filename that matches one of *.lib, *.a, *.rlib.
+            // Whew, iterators are pretty awesome.
+            let filename = filenames.iter().find(|f| {
+                ["lib", "a", "rlib"]
+                    .iter()
+                    .any(|e| f.extension() == Some(e))
+            });
+
+            let filename = match filename {
+                Some(f) => f,
+                None => {
+                    eprintln!("Found artifact \"{name}\", but did not find library artifact from {filenames:?}!");
+                    std::process::exit(1);
+                }
+            };
+
+            // Determine the path to the artifact.
+            let filepath = filename.parent().unwrap();
+            let filename = filename.file_name().unwrap();
+
+            // HACK: Solely use forward slashes to ensure compatibility with Linux-based tooling.
+            let filepath = PathBuf::from(filepath).to_slash().unwrap();
+
+            if msvc {
+                // These additional libraries are typically required by Rust.
+                // FIXME: Figure out when, and why?
+                const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
+
+                println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
+            } else {
+                println!("-L{filepath} -l{name}");
+            }
+        }
+    } else {
+        eprintln!("Could not find an artifact named \"{name}\"!");
+        eprintln!("Possible artifacts:");
+
+        // FIXME: Dependency artifacts are also listed here, but it would be improper for
+        // a user to be able to directly specify the artifacts from a dependency crate
+        for artifact in &artifacts {
+            let name = &artifact.target.name;
+            let kinds = &artifact.target.kind;
+
+            eprintln!("  {name}: {kinds:?}");
+        }
+
+        std::process::exit(1);
+    }
 
     let output = command.wait().unwrap();
 
