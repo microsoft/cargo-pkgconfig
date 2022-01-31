@@ -71,6 +71,16 @@ fn main() {
     for message in cargo_metadata::Message::parse_stream(reader) {
         match message.unwrap() {
             cargo_metadata::Message::CompilerArtifact(artifact) => artifacts.push(artifact),
+            cargo_metadata::Message::BuildFinished(finished) => {
+                if finished.success != true {
+                    // If the build was not successful, forward the Cargo exit code.
+                    std::process::exit(if let Some(code) = command.wait().unwrap().code() {
+                        code
+                    } else {
+                        1
+                    });
+                }
+            }
             _ => {}
         }
     }
