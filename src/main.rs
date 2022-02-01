@@ -6,6 +6,13 @@ use std::{
 
 use path_slash::PathBufExt;
 
+/// Linker command line flavor
+#[derive(PartialEq, Clone)]
+enum LinkerFlavor {
+    MSVC,
+    GCC,
+}
+
 fn main() {
     let matches = App::new("cargo")
         .bin_name("cargo")
@@ -24,9 +31,11 @@ fn main() {
                     .help("output all linker flags")
                     .long("libs")
                     .required(false),
-                Arg::new("msvc")
-                    .help("emit MSVC-style flags")
-                    .long("msvc")
+                Arg::new("flavor")
+                    .help("flavor of linker command-line flags")
+                    .long("flavor")
+                    .takes_value(true)
+                    .possible_values(["msvc", "gcc"])
                     .required(false),
                 Arg::new("cargocmd")
                     .takes_value(true)
@@ -43,7 +52,19 @@ fn main() {
 
     let name = matches.value_of("libname").unwrap();
     let dump_libs = matches.is_present("libs");
-    let msvc = matches.is_present("msvc");
+    let flavor = match matches.value_of("flavor") {
+        Some("msvc") => LinkerFlavor::MSVC,
+        Some("gcc") => LinkerFlavor::GCC,
+        _ => {
+            // HACK: Use OS to extract style.
+            // Really should use the target's compiler triple instead.
+            if cfg!(target_os = "windows") {
+                LinkerFlavor::MSVC
+            } else {
+                LinkerFlavor::GCC
+            }
+        },
+    };
 
     let cargo_args = matches
         .values_of("cargocmd")
@@ -122,7 +143,7 @@ fn main() {
             // HACK: Solely use forward slashes to ensure compatibility with Linux-based tooling.
             let filepath = PathBuf::from(filepath).to_slash().unwrap();
 
-            if msvc {
+            if flavor == LinkerFlavor::MSVC {
                 // These additional libraries are typically required by Rust.
                 // FIXME: Figure out when, and why?
                 const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
