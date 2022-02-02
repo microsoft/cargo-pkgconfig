@@ -63,7 +63,7 @@ fn main() {
             } else {
                 LinkerFlavor::GCC
             }
-        },
+        }
     };
 
     let cargo_args = matches
@@ -143,14 +143,17 @@ fn main() {
             // HACK: Solely use forward slashes to ensure compatibility with Linux-based tooling.
             let filepath = PathBuf::from(filepath).to_slash().unwrap();
 
-            if flavor == LinkerFlavor::MSVC {
-                // These additional libraries are typically required by Rust.
-                // FIXME: Figure out when, and why?
-                const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
+            match flavor {
+                LinkerFlavor::MSVC => {
+                    // These additional libraries are typically required by Rust.
+                    // FIXME: Figure out when, and why?
+                    const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
 
-                println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
-            } else {
-                println!("-L{filepath} -l{name}");
+                    println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
+                }
+                LinkerFlavor::GCC => {
+                    println!("-L{filepath} -l{name}");
+                }
             }
         }
     } else {
