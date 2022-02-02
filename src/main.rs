@@ -147,7 +147,7 @@ fn main() {
                 LinkerFlavor::MSVC => {
                     // These additional libraries are typically required by Rust.
                     // FIXME: Figure out when, and why?
-                    const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib";
+                    const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib Ole32.lib OleAut32.lib";
 
                     println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
                 }
