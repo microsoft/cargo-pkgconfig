@@ -6,8 +6,9 @@ in a manner that is synonymous with the native `pkg-config`.
 
 For example, with `bindgen`:
 ```
-$ cargo pkg-config --libs bindgen
--LD:\Dev\Repositories\rust-bindgen\target\release -lbindgen
+> cargo pkgconfig --libs bindgen
+    Finished dev [unoptimized + debuginfo] target(s) in 0.05s
+/LIBPATH:D:/Dev/Repositories/rust-bindgen/target/debug libbindgen.rlib Bcrypt.lib Userenv.lib
 ```
 
 You can then use this output such as follows in a Makefile project:
