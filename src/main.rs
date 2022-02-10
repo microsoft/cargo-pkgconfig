@@ -6,10 +6,20 @@ use std::{
 
 use path_slash::PathBufExt;
 
+/// Tool to dump commands for
+enum DumpType {
+    /// `ar` on Linux, `lib` on Windows.
+    Archiver,
+    /// `ld` on Linux, `link` on Windows.
+    Linker,
+}
+
 /// Linker command line flavor
 #[derive(PartialEq, Clone)]
 enum LinkerFlavor {
+    /// Microsoft Visual Studio
     MSVC,
+    /// GNU Compiler Collection
     GCC,
 }
 
@@ -30,7 +40,13 @@ fn main() {
                 Arg::new("libs")
                     .help("output all linker flags")
                     .long("libs")
-                    .required(false),
+                    .required(false)
+                    .conflicts_with("ar"),
+                Arg::new("ar")
+                    .help("output all archiver flags")
+                    .long("ar")
+                    .required(false)
+                    .conflicts_with("libs"),
                 Arg::new("flavor")
                     .help("flavor of linker command-line flags")
                     .long("flavor")
@@ -52,6 +68,17 @@ fn main() {
 
     let name = matches.value_of("libname").unwrap();
     let dump_libs = matches.is_present("libs");
+    let dump_type = {
+        if matches.is_present("libs") {
+            DumpType::Linker
+        } else if matches.is_present("ar") {
+            DumpType::Archiver
+        } else {
+            eprintln!("No output format specified!");
+            std::process::exit(1);
+        }
+    };
+
     let flavor = match matches.value_of("flavor") {
         Some("msvc") => LinkerFlavor::MSVC,
         Some("gcc") => LinkerFlavor::GCC,
@@ -149,11 +176,13 @@ fn main() {
                     // FIXME: Figure out when, and why?
                     const ADDITIONAL_LIBS: &str = "Bcrypt.lib Userenv.lib Ole32.lib OleAut32.lib";
 
+                    // N.B: MSVC linker and archiver take the same command line argument format.
                     println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
                 }
-                LinkerFlavor::GCC => {
-                    println!("-L{filepath} -l{name}");
-                }
+                LinkerFlavor::GCC => match dump_type {
+                    DumpType::Archiver => println!("{filepath}/{name}"),
+                    DumpType::Linker => println!("-L{filepath} -l{name}"),
+                },
             }
         }
     } else {
