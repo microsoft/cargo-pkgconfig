@@ -67,7 +67,6 @@ fn main() {
     };
 
     let name = matches.value_of("libname").unwrap();
-    let dump_libs = matches.is_present("libs");
     let dump_type = {
         if matches.is_present("libs") {
             DumpType::Linker
@@ -142,7 +141,6 @@ fn main() {
             .kind
             .iter()
             .any(|s| ["lib", "staticlib"].iter().any(|t| t == s))
-            && dump_libs
         {
             // Determine path and dump library filename.
             let filenames = &artifact.filenames;
