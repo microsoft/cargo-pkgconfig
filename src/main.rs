@@ -178,7 +178,7 @@ fn main() {
                     println!("/LIBPATH:{filepath} {filename} {ADDITIONAL_LIBS}");
                 }
                 LinkerFlavor::GCC => match dump_type {
-                    DumpType::Archiver => println!("{filepath}/{name}"),
+                    DumpType::Archiver => println!("{filepath}/{filename}"),
                     DumpType::Linker => println!("-L{filepath} -l{name}"),
                 },
             }
